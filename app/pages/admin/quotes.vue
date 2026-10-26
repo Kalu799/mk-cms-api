@@ -189,11 +189,7 @@ onMounted(() => {
           <option value="rejected">Rejetées</option>
         </select>
 
-        <AdminQuoteMovieFilter
-          v-model:movie="selectedMovie"
-          v-model:quote="selectedQuote"
-          :quotes="quotes"
-        />
+        <AdminQuoteMovieFilter v-model:movie="selectedMovie" v-model:quote="selectedQuote" :quotes="quotes" />
       </div>
 
       <!-- EN-TÊTE DU TABLEAU -->
@@ -273,6 +269,39 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Affichage mobile des citations -->
+      <div class="mobile-quote-list">
+        <article v-for="quote in filteredQuotes" :key="quote.ID_quote" class="mobile-quote-card">
+          <p class="mobile-quote-text">
+            « {{ quote.quote_text || 'Citation sans texte' }} »
+          </p>
+
+          <h3>{{ quote.movie_title || 'Film inconnu' }}</h3>
+
+          <div class="mobile-quote-details">
+            <span class="status-badge" :class="statusClass(quote.quote_status)">
+              {{ formatStatus(quote.quote_status) }}
+            </span>
+
+            <span class="language-badge">
+              {{ quote.quote_language || '—' }}
+            </span>
+          </div>
+
+          <p class="mobile-quote-date">
+            Ajoutée le {{ formatDate(quote.quote_created_at) }}
+          </p>
+        </article>
+
+        <p v-if="filteredQuotes.length === 0" class="mobile-empty-state">
+          {{
+            quotes.length === 0
+              ? 'Aucune citation enregistrée.'
+              : 'Aucune citation ne correspond à tes filtres.'
+          }}
+        </p>
       </div>
 
       <AdminPagination
@@ -735,5 +764,83 @@ tbody tr:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+
+/* Cartes mobiles : masquées sur ordinateur */
+.mobile-quote-list {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .quotes-page {
+    min-width: 0;
+  }
+
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .table-wrapper {
+    display: none;
+  }
+
+  .mobile-quote-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-quote-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #E5E0D6;
+    border-radius: 12px;
+    background: #FAF9F5;
+  }
+
+  .mobile-quote-text {
+    margin: 0 0 14px;
+    color: #212121;
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .mobile-quote-card h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+      color: #000000;
+  }
+
+  .mobile-quote-details {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mobile-quote-date {
+    margin: 12px 0 0;
+    color: #777D79;
+    font-size: 12px;
+  }
+
+  .mobile-empty-state {
+    padding: 20px 8px;
+    color: #777D79;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+.page-content,
+.quotes-page,
+.users-page,
+.stats-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 </style>

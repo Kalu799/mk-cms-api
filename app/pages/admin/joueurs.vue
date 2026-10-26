@@ -509,6 +509,77 @@ onMounted(loadUsers);
           </table>
         </div>
 
+        <!-- Cartes utilisateurs sur mobile -->
+        <div class="mobile-user-list">
+          <article v-for="user in filteredUsers" :key="user.ID_user" class="mobile-user-card">
+            <div class="mobile-user-heading">
+              <div class="mobile-user-identity">
+                <h3>{{ user.user_pseudo || 'Sans pseudo' }}</h3>
+                <p>{{ user.user_mail || '—' }}</p>
+              </div>
+
+              <span class="status-badge" :class="Number(user.user_is_blocked) === 1 ? 'blocked' : 'active'">
+                {{ Number(user.user_is_blocked) === 1 ? 'Bloqué' : 'Actif' }}
+              </span>
+            </div>
+
+            <dl class="mobile-user-details">
+              <div>
+                <dt>Rôle</dt>
+                <dd>{{ user.user_role === 'admin' ? 'Administrateur' : 'Joueur' }}</dd>
+              </div>
+
+              <div>
+                <dt>Score</dt>
+                <dd>{{ user.user_score ?? 0 }}</dd>
+              </div>
+
+              <div>
+                <dt>Inscription</dt>
+                <dd>{{ formatCreatedAt(user.user_created_at) }}</dd>
+              </div>
+            </dl>
+
+            <div class="mobile-user-actions">
+              <button type="button" class="block-button"
+                :class="Number(user.user_is_blocked) === 1 ? 'unblock' : 'block'"
+                :disabled="updatingUserId === user.ID_user" @click="toggleUserBlock(user)">
+                {{
+                  updatingUserId === user.ID_user
+                    ? 'Patientez...'
+                    : Number(user.user_is_blocked) === 1
+                      ? 'Débloquer'
+                      : 'Bloquer'
+                }}
+              </button>
+
+              <button type="button" class="delete-button" :disabled="deletingUserId === user.ID_user"
+                @click="deleteUser(user)"
+                :aria-label="deletingUserId === user.ID_user ? 'Suppression en cours' : `Supprimer ${user.user_pseudo}`"
+                title="Supprimer l'utilisateur">
+                <span v-if="deletingUserId === user.ID_user">Suppression...</span>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14H6L5 6"></path>
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                  <path d="M9 6V4h6v2"></path>
+                </svg>
+              </button>
+            </div>
+          </article>
+
+          <p v-if="filteredUsers.length === 0" class="mobile-empty-state">
+            {{
+              search || selectedRole !== 'all'
+                ? 'Aucun utilisateur ne correspond aux filtres.'
+                : 'Aucun utilisateur enregistré.'
+            }}
+          </p>
+        </div>
+
         <AdminPagination
           v-model:current-page="currentPage"
           :total-items="filteredUsers.length"
@@ -1164,5 +1235,117 @@ tbody tr:not(:last-child):hover {
   font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+
+/* Cartes utilisateurs : masquées sur ordinateur */
+.mobile-user-list {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .users-page {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table-wrapper {
+    display: none;
+  }
+
+  .mobile-user-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-user-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #E5E0D6;
+    border-radius: 12px;
+    background: #FAF9F5;
+  }
+
+  .mobile-user-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .mobile-user-identity {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-user-identity h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    overflow-wrap: anywhere;
+    color: #000000;
+  }
+
+  .mobile-user-identity p {
+    margin: 0;
+    color: #777D79;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-user-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0;
+  }
+
+  .mobile-user-details dt {
+    margin-bottom: 5px;
+    color: #777D79;
+    font-size: 11px;
+  }
+
+  .mobile-user-details dd {
+    margin: 0;
+    color: #212121;
+    font-size: 13px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-user-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid #E5E0D6;
+  }
+
+  .mobile-user-actions button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 10px 6px;
+    white-space: normal;
+  }
+
+  .mobile-empty-state {
+    padding: 20px 8px;
+    color: #777D79;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+
+.page-content,
+.quotes-page,
+.users-page,
+.stats-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 </style>

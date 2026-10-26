@@ -1,4 +1,3 @@
-
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 
@@ -100,25 +99,25 @@ const filteredQuotes = computed(() => {
         (quote.movie_title || '').toLowerCase().includes(searchText)
       )
     })
- .sort((a, b) => {
-  if (sortBy.value === 'times_asked_asc') {
-    return Number(a.times_asked || 0) - Number(b.times_asked || 0)
-  }
+    .sort((a, b) => {
+      if (sortBy.value === 'times_asked_asc') {
+        return Number(a.times_asked || 0) - Number(b.times_asked || 0)
+      }
 
-  if (sortBy.value === 'success_asc') {
-    return getSuccessRate(a) - getSuccessRate(b)
-  }
+      if (sortBy.value === 'success_asc') {
+        return getSuccessRate(a) - getSuccessRate(b)
+      }
 
-  if (sortBy.value === 'success_desc') {
-    return getSuccessRate(b) - getSuccessRate(a)
-  }
+      if (sortBy.value === 'success_desc') {
+        return getSuccessRate(b) - getSuccessRate(a)
+      }
 
-  if (sortBy.value === 'incorrect_count') {
-    return Number(b.incorrect_count || 0) - Number(a.incorrect_count || 0)
-  }
+      if (sortBy.value === 'incorrect_count') {
+        return Number(b.incorrect_count || 0) - Number(a.incorrect_count || 0)
+      }
 
-  return Number(b.times_asked || 0) - Number(a.times_asked || 0)
-})
+      return Number(b.times_asked || 0) - Number(a.times_asked || 0)
+    })
 })
 
 const paginatedQuotes = computed(() => {
@@ -161,12 +160,7 @@ onMounted(() => {
         </p>
       </div>
 
-      <button
-        class="refresh-button"
-        type="button"
-        :disabled="isLoading"
-        @click="loadQuotes"
-      >
+      <button class="refresh-button" type="button" :disabled="isLoading" @click="loadQuotes">
         ↻ {{ isLoading ? 'Chargement...' : 'Actualiser' }}
       </button>
     </header>
@@ -227,14 +221,8 @@ onMounted(() => {
           </p>
         </div>
 
-        <div
-          class="rate-track"
-          role="progressbar"
-          :aria-valuenow="successRate"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-label="Taux de réussite global"
-        >
+        <div class="rate-track" role="progressbar" :aria-valuenow="successRate" aria-valuemin="0" aria-valuemax="100"
+          aria-label="Taux de réussite global">
           <div class="rate-fill" :style="{ width: `${successRate}%` }"></div>
         </div>
       </article>
@@ -243,12 +231,8 @@ onMounted(() => {
         <div class="filters">
           <div class="search-field">
             <span aria-hidden="true">⌕</span>
-            <input
-              v-model="search"
-              type="search"
-              placeholder="Rechercher une citation ou un film..."
-              aria-label="Rechercher une citation ou un film"
-            />
+            <input v-model="search" type="search" placeholder="Rechercher une citation ou un film..."
+              aria-label="Rechercher une citation ou un film" />
           </div>
 
           <select v-model="sortBy" class="sort-filter" aria-label="Trier les citations">
@@ -303,11 +287,8 @@ onMounted(() => {
                 <td class="rate-cell">
                   <strong>{{ Math.round(getSuccessRate(quote)) }} %</strong>
                   <div class="mini-track">
-                    <div
-                      class="mini-fill"
-                      :class="{ difficult: getSuccessRate(quote) < 50 }"
-                      :style="{ width: `${getSuccessRate(quote)}%` }"
-                    ></div>
+                    <div class="mini-fill" :class="{ difficult: getSuccessRate(quote) < 50 }"
+                      :style="{ width: `${getSuccessRate(quote)}%` }"></div>
                   </div>
                 </td>
               </tr>
@@ -320,6 +301,56 @@ onMounted(() => {
             </tbody>
           </table>
         </div>
+
+
+        <!-- Détails statistiques sur mobile -->
+        <div class="mobile-stat-list">
+          <article v-for="quote in filteredQuotes" :key="quote.ID_quote" class="mobile-stat-card">
+            <h3>{{ quote.quote_text || 'Citation sans texte' }}</h3>
+
+            <p class="mobile-stat-movie">
+              {{ quote.movie_title || 'Film inconnu' }}
+            </p>
+
+            <div class="mobile-stat-metrics">
+              <div>
+                <span>Proposée</span>
+                <strong>{{ Number(quote.times_asked || 0) }}</strong>
+              </div>
+
+              <div>
+                <span>Bonnes réponses</span>
+                <strong class="mobile-correct">
+                  {{ Number(quote.correct_count || 0) }}
+                </strong>
+              </div>
+
+              <div>
+                <span>Mauvaises réponses</span>
+                <strong class="mobile-incorrect">
+                  {{ Number(quote.incorrect_count || 0) }}
+                </strong>
+              </div>
+
+              <div>
+                <span>Réussite</span>
+                <strong>{{ Math.round(getSuccessRate(quote)) }} %</strong>
+              </div>
+            </div>
+
+            <div class="mini-track mobile-stat-track" role="progressbar"
+              :aria-valuenow="Math.round(getSuccessRate(quote))" aria-valuemin="0" aria-valuemax="100"
+              :aria-label="`Taux de réussite pour ${quote.movie_title || 'ce film'}`">
+              <div class="mini-fill" :class="{ difficult: getSuccessRate(quote) < 50 }"
+                :style="{ width: `${getSuccessRate(quote)}%` }"></div>
+            </div>
+          </article>
+
+          <p v-if="filteredQuotes.length === 0" class="mobile-empty-state">
+            Aucune citation ne correspond à ta recherche.
+          </p>
+        </div>
+
 
         <AdminPagination
           v-model:current-page="currentPage"
@@ -519,7 +550,7 @@ onMounted(() => {
   outline: 2px solid rgb(115 156 145 / 15%);
 }
 
-.search-field > span {
+.search-field>span {
   color: #6B706D;
   font-size: 23px;
 }
@@ -746,10 +777,112 @@ tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
   }
+}
+
+
+/* Détails mobiles masqués sur ordinateur */
+.mobile-stat-list {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .stats-page {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table-wrapper {
+    display: none;
+  }
+
+  .mobile-stat-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-stat-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #E5E0D6;
+    border-radius: 12px;
+    background: #FAF9F5;
+  }
+
+  .mobile-stat-card h3 {
+    margin: 0;
+    color: #212121;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .mobile-stat-movie {
+    margin: 6px 0 16px;
+    color: #777D79;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-stat-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 12px;
+  }
+
+  .mobile-stat-metrics > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .mobile-stat-metrics span {
+    color: #777D79;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .mobile-stat-metrics strong {
+    color: #212121;
+    font-size: 17px;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-stat-metrics .mobile-correct {
+    color: #287653;
+  }
+
+  .mobile-stat-metrics .mobile-incorrect {
+    color: #B8403B;
+  }
+
+  .mobile-stat-track {
+    width: 100%;
+    height: 7px;
+    margin-top: 18px;
+  }
+
+  .mobile-empty-state {
+    padding: 20px 8px;
+    color: #777D79;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+.page-content,
+.quotes-page,
+.users-page,
+.stats-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 </style>

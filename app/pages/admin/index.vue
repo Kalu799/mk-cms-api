@@ -44,6 +44,16 @@ definePageMeta({
             Gérer les citations →
           </NuxtLink>
         </article>
+<article class="stat-card">
+          <div class="stat-icon">📊</div>
+          <p>Films</p>
+          <strong>Les statistiques</strong>
+          <NuxtLink to="/admin/statistiques">
+            Gérer les statistiques →
+          </NuxtLink>
+        </article>
+        
+
       </div>
     </section>
   </AdminProtection>
