@@ -16,7 +16,7 @@ const isLoading = ref(true)
 const errorMessage = ref('')
 const loaded = ref(false);
 const currentPage = ref(1)
-const pageSize = 25
+const pageSize = 10
 
 // ========================================
 // FILTRAGE DES CITATIONS
