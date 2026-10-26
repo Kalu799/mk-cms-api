@@ -1,126 +1,159 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from "vue";
 
 definePageMeta({
-  layout: 'admin',
-})
+  layout: "admin",
+});
 // ========================================
 // ÉTAT DE LA PAGE
 // ========================================
 
-const quotes = ref([])
-const search = ref('')
-const selectedStatus = ref('')
-const isLoading = ref(true)
-const errorMessage = ref('')
+const quotes = ref([]);
+const selectedStatus = ref("");
+const selectedMovie = ref("");
+const selectedQuote = ref("");
+const isLoading = ref(true);
+const errorMessage = ref("");
+const loaded = ref(false);
+const currentPage = ref(1);
+const pageSize = 10;
+
+// Revient en haut sur mobile après le passage à la page suivante.
+watch(
+  currentPage,
+  (page, previousPage) => {
+    if (
+      page <= previousPage ||
+      !window.matchMedia("(max-width: 700px)").matches
+    ) {
+      return;
+    }
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    window.scrollTo({
+      top: 0,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  },
+  { flush: "post" },
+);
 
 // ========================================
 // FILTRAGE DES CITATIONS
 // ========================================
 
 const filteredQuotes = computed(() => {
-  const searchText = search.value.toLowerCase().trim()
-
   return quotes.value.filter((quote) => {
-    const matchesSearch =
-      !searchText ||
-      (quote.quote_text || '').toLowerCase().includes(searchText) ||
-      (quote.movie_title || '').toLowerCase().includes(searchText) ||
-      (quote.quote_source || '').toLowerCase().includes(searchText)
-
     const matchesStatus =
-      !selectedStatus.value ||
-      quote.quote_status === selectedStatus.value
+      !selectedStatus.value || quote.quote_status === selectedStatus.value;
 
-    return matchesSearch && matchesStatus
-  })
-})
+    const matchesMovie =
+      !selectedMovie.value || String(quote.ID_movie) === selectedMovie.value;
+
+    const matchesQuote =
+      !selectedQuote.value || String(quote.ID_quote) === selectedQuote.value;
+
+    return matchesStatus && matchesMovie && matchesQuote;
+  });
+});
+
+const paginatedQuotes = computed(() => {
+  const start = (currentPage.value - 1) * pageSize;
+  return filteredQuotes.value.slice(start, start + pageSize);
+});
+
+watch([selectedStatus, selectedMovie, selectedQuote], () => {
+  currentPage.value = 1;
+});
+
+watch(filteredQuotes, () => {
+  const lastPage = Math.max(
+    1,
+    Math.ceil(filteredQuotes.value.length / pageSize),
+  );
+  if (currentPage.value > lastPage) currentPage.value = lastPage;
+});
 
 // ========================================
 // CHARGEMENT DES CITATIONS DEPUIS L'API
 // ========================================
 
 const loadQuotes = async () => {
-  isLoading.value = true
-  errorMessage.value = ''
+  isLoading.value = true;
+  errorMessage.value = "";
 
   try {
-    const token = sessionStorage.getItem('movieKingAdminToken')
+    const token = sessionStorage.getItem("movieKingAdminToken");
 
     if (!token) {
-      throw new Error('Session administrateur introuvable. Reconnecte-toi.')
+      throw new Error("Session administrateur introuvable. Reconnecte-toi.");
     }
 
-    const response = await $fetch('/api/admin/quotes', {
+    const response = await $fetch("/api/admin/quotes", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    })
+    });
 
-    quotes.value = response.quotes || []
+    quotes.value = response.quotes || [];
+    loaded.value = true;
   } catch (error) {
     errorMessage.value =
       error.data?.statusMessage ||
       error.message ||
-      'Impossible de charger les citations.'
+      "Impossible de charger les citations.";
   } finally {
-    isLoading.value = false
+    isLoading.value = false;
   }
-}
+};
 
 // ========================================
 // OUTILS D'AFFICHAGE
 // ========================================
 
 const formatDate = (date) => {
-  if (!date) return '—'
+  if (!date) return "—";
 
-  const parsedDate = new Date(date)
+  const parsedDate = new Date(date);
 
-  if (Number.isNaN(parsedDate.getTime())) return '—'
+  if (Number.isNaN(parsedDate.getTime())) return "—";
 
-  return new Intl.DateTimeFormat('fr-BE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(parsedDate)
-}
+  return new Intl.DateTimeFormat("fr-BE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parsedDate);
+};
 
 const formatStatus = (status) => {
-  if (!status) return 'Non défini'
+  if (!status) return "Non défini";
 
   return String(status)
-    .replaceAll('_', ' ')
-    .replace(/^./, (letter) => letter.toUpperCase())
-}
+    .replaceAll("_", " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
+};
 
 const statusClass = (status) => {
-  const value = String(status || '').toLowerCase()
+  const value = String(status || "").toLowerCase();
 
-  if (['published', 'published ', 'active', 'actif', 'published'].includes(value)) {
-    return 'status-published'
-  }
+  if (value === "approved") return "status-published";
+  if (value === "pending") return "status-pending";
+  if (value === "rejected") return "status-archived";
 
-  if (['draft', 'brouillon', 'pending', 'en_attente'].includes(value)) {
-    return 'status-pending'
-  }
-
-  if (['archived', 'inactive', 'inactif'].includes(value)) {
-    return 'status-archived'
-  }
-
-  return 'status-default'
-}
+  return "status-default";
+};
 
 // ========================================
 // INITIALISATION
 // ========================================
 
 onMounted(() => {
-  loadQuotes()
-})
+  loadQuotes();
+});
 </script>
-
 
 <template>
   <section class="page-content quotes-page">
@@ -134,9 +167,14 @@ onMounted(() => {
         </p>
       </div>
 
-      <button class="refresh-button" type="button" :disabled="isLoading" @click="loadQuotes">
+      <button
+        class="refresh-button"
+        type="button"
+        :disabled="isLoading"
+        @click="loadQuotes"
+      >
         <span aria-hidden="true">↻</span>
-        {{ isLoading ? 'Chargement...' : 'Actualiser' }}
+        {{ isLoading ? "Chargement..." : "Actualiser" }}
       </button>
     </header>
 
@@ -144,7 +182,7 @@ onMounted(() => {
     <div class="summary-card">
       <div class="summary-icon" aria-hidden="true">❝</div>
 
-      <div>
+      <div v-show="loaded">
         <p class="summary-label">Citations enregistrées</p>
         <p class="summary-number">
           {{ quotes.length }}
@@ -168,24 +206,24 @@ onMounted(() => {
 
     <!-- TABLEAU DES CITATIONS -->
     <div v-else class="table-card">
-
       <!-- RECHERCHE ET FILTRES -->
       <div class="filters">
-        <div class="search-field">
-          <span aria-hidden="true">⌕</span>
-
-          <input v-model="search" type="search" placeholder="Rechercher une citation, un film..."
-            aria-label="Rechercher une citation ou un film" />
-        </div>
-
-        <select v-model="selectedStatus" aria-label="Filtrer par statut" class="status-filter">
+        <select
+          v-model="selectedStatus"
+          aria-label="Filtrer par statut"
+          class="status-filter"
+        >
           <option value="">Tous les statuts</option>
-
-          <option v-for="status in [...new Set(quotes.map(q => q.quote_status).filter(Boolean))]" :key="status"
-            :value="status">
-            {{ formatStatus(status) }}
-          </option>
+          <option value="pending">En attente</option>
+          <option value="approved">Approuvées</option>
+          <option value="rejected">Rejetées</option>
         </select>
+
+        <AdminQuoteMovieFilter
+          v-model:movie="selectedMovie"
+          v-model:quote="selectedQuote"
+          :quotes="quotes"
+        />
       </div>
 
       <!-- EN-TÊTE DU TABLEAU -->
@@ -194,7 +232,7 @@ onMounted(() => {
 
         <span class="result-count">
           {{ filteredQuotes.length }}
-          résultat{{ filteredQuotes.length > 1 ? 's' : '' }}
+          résultat{{ filteredQuotes.length > 1 ? "s" : "" }}
         </span>
       </div>
 
@@ -205,30 +243,40 @@ onMounted(() => {
             <tr>
               <th>Citation</th>
               <th>Film associé</th>
+              <th>statut</th>
               <th>Langue</th>
               <th>Date d'ajout</th>
             </tr>
           </thead>
 
           <tbody>
-            <tr v-for="quote in filteredQuotes" :key="quote.ID_quote">
-
+            <tr v-for="quote in paginatedQuotes" :key="quote.ID_quote">
               <td class="quote-cell">
                 <span class="quote-mark" aria-hidden="true">“</span>
                 <span>
-                  {{ quote.quote_text || 'Citation sans texte' }}
+                  {{ quote.quote_text || "Citation sans texte" }}
                 </span>
-                <span class="quote-mark quote-mark-end" aria-hidden="true">”</span>
+                <span class="quote-mark quote-mark-end" aria-hidden="true"
+                  >”</span
+                >
               </td>
 
-
               <td class="movie-cell">
-                {{ quote.movie_title || 'Film inconnu' }}
+                {{ quote.movie_title || "Film inconnu" }}
+              </td>
+
+              <td>
+                <span
+                  class="status-badge"
+                  :class="statusClass(quote.quote_status)"
+                >
+                  {{ formatStatus(quote.quote_status) }}
+                </span>
               </td>
 
               <td>
                 <span class="language-badge">
-                  {{ quote.quote_language || '—' }}
+                  {{ quote.quote_language || "—" }}
                 </span>
               </td>
 
@@ -239,19 +287,27 @@ onMounted(() => {
 
             <!-- AUCUN RÉSULTAT -->
             <tr v-if="filteredQuotes.length === 0">
-              <td colspan="4" class="empty-state">
+              <td colspan="5" class="empty-state">
                 <span class="empty-icon" aria-hidden="true">⌕</span>
 
                 <p>
                   {{
                     quotes.length === 0
-                      ? 'Aucune citation enregistrée.'
-                      : 'Aucune citation ne correspond à ta recherche.'
+                      ? "Aucune citation enregistrée."
+                      : "Aucune citation ne correspond à ta recherche."
                   }}
                 </p>
 
-                <button v-if="search || selectedStatus" type="button" class="reset-button"
-                  @click="search = ''; selectedStatus = ''">
+                <button
+                  v-if="selectedStatus || selectedMovie || selectedQuote"
+                  type="button"
+                  class="reset-button"
+                  @click="
+                    selectedStatus = '';
+                    selectedMovie = '';
+                    selectedQuote = '';
+                  "
+                >
                   Réinitialiser les filtres
                 </button>
               </td>
@@ -260,11 +316,51 @@ onMounted(() => {
         </table>
       </div>
 
+      <!-- Affichage mobile des citations -->
+      <div class="mobile-quote-list">
+        <article
+          v-for="quote in paginatedQuotes"
+          :key="quote.ID_quote"
+          class="mobile-quote-card"
+        >
+          <p class="mobile-quote-text">
+            « {{ quote.quote_text || "Citation sans texte" }} »
+          </p>
+
+          <h3>{{ quote.movie_title || "Film inconnu" }}</h3>
+
+          <div class="mobile-quote-details">
+            <span class="status-badge" :class="statusClass(quote.quote_status)">
+              {{ formatStatus(quote.quote_status) }}
+            </span>
+
+            <span class="language-badge">
+              {{ quote.quote_language || "—" }}
+            </span>
+          </div>
+
+          <p class="mobile-quote-date">
+            Ajoutée le {{ formatDate(quote.quote_created_at) }}
+          </p>
+        </article>
+
+        <p v-if="filteredQuotes.length === 0" class="mobile-empty-state">
+          {{
+            quotes.length === 0
+              ? "Aucune citation enregistrée."
+              : "Aucune citation ne correspond à tes filtres."
+          }}
+        </p>
+      </div>
+
+      <AdminPagination
+        v-model:current-page="currentPage"
+        :total-items="filteredQuotes.length"
+        :page-size="pageSize"
+      />
     </div>
   </section>
 </template>
-
-
 
 <style scoped>
 /* ========================================
@@ -289,7 +385,7 @@ onMounted(() => {
 
 .eyebrow {
   margin: 0 0 10px;
-  color: #52796F;
+  color: #52796f;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.5px;
@@ -312,19 +408,21 @@ onMounted(() => {
   justify-content: center;
   gap: 8px;
   padding: 11px 16px;
-  border: 1px solid #739C91;
+  border: 1px solid #739c91;
   border-radius: 9px;
-  background: #739C91;
-  color: #FFFFFF;
+  background: #739c91;
+  color: #ffffff;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
 .refresh-button:hover:not(:disabled) {
-  background: #52796F;
+  background: #52796f;
   transform: translateY(-1px);
 }
 
@@ -339,9 +437,9 @@ onMounted(() => {
 
 .summary-card,
 .table-card {
-  border: 1px solid #E5E0D6;
+  border: 1px solid #e5e0d6;
   border-radius: 14px;
-  background: #FFFFFF;
+  background: #ffffff;
   box-shadow: 0 4px 12px rgb(33 33 33 / 4%);
 }
 
@@ -362,14 +460,14 @@ onMounted(() => {
   height: 48px;
   flex-shrink: 0;
   border-radius: 12px;
-  background: #E7F0EC;
-  color: #52796F;
+  background: #e7f0ec;
+  color: #52796f;
   font-size: 28px;
 }
 
 .summary-label {
   margin: 0 0 5px;
-  color: #6B706D;
+  color: #6b706d;
   font-size: 13px;
 }
 
@@ -385,63 +483,27 @@ onMounted(() => {
 ======================================== */
 
 .filters {
-  display: flex;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 22px;
 }
 
-.search-field {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  padding-left: 14px;
-  border: 1px solid #DEDCD3;
-  border-radius: 9px;
-  background: #FAF9F5;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.search-field:focus-within,
 .status-filter:focus {
-  border-color: #739C91;
+  border-color: #739c91;
   box-shadow: 0 0 0 3px rgb(115 156 145 / 15%);
   outline: none;
 }
 
-.search-field>span {
-  flex-shrink: 0;
-  color: #6B706D;
-  font-size: 23px;
-}
-
-.search-field input {
+.status-filter {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  padding: 13px 14px 13px 10px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: #212121;
-  font: inherit;
-  font-size: 13px;
-}
-
-.search-field input::placeholder {
-  color: #929792;
-}
-
-.status-filter {
-  box-sizing: border-box;
-  width: 200px;
-  min-width: 0;
   padding: 13px 14px;
-  border: 1px solid #DEDCD3;
+  border: 1px solid #dedcd3;
   border-radius: 9px;
   outline: none;
-  background: #FAF9F5;
+  background: #faf9f5;
   color: #212121;
   font: inherit;
   font-size: 13px;
@@ -472,7 +534,7 @@ onMounted(() => {
 }
 
 .result-count {
-  color: #777D79;
+  color: #777d79;
   font-size: 12px;
   white-space: nowrap;
 }
@@ -483,7 +545,7 @@ onMounted(() => {
 
 .table-wrapper {
   overflow-x: auto;
-  border: 1px solid #EAE7DF;
+  border: 1px solid #eae7df;
   border-radius: 10px;
 }
 
@@ -494,13 +556,13 @@ table {
 }
 
 thead {
-  background: #F7F4EA;
+  background: #f7f4ea;
 }
 
 th {
   padding: 15px 16px;
-  border-bottom: 1px solid #E5E0D6;
-  color: #666D68;
+  border-bottom: 1px solid #e5e0d6;
+  color: #666d68;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -510,7 +572,7 @@ th {
 
 td {
   padding: 17px 16px;
-  border-bottom: 1px solid #F0EEE7;
+  border-bottom: 1px solid #f0eee7;
   color: #343835;
   font-size: 13px;
   line-height: 1.6;
@@ -526,7 +588,7 @@ tbody tr {
 }
 
 tbody tr:hover {
-  background: #F9FAF6;
+  background: #f9faf6;
 }
 
 .quote-cell {
@@ -537,10 +599,9 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
-
 .quote-mark {
   margin-right: 5px;
-  color: #739C91;
+  color: #739c91;
   font-size: 20px;
   font-weight: 800;
 }
@@ -549,7 +610,6 @@ tbody tr:hover {
   margin-right: 0;
   margin-left: 1px;
 }
-
 
 .movie-cell {
   min-width: 150px;
@@ -561,8 +621,8 @@ tbody tr:hover {
   display: inline-block;
   padding: 5px 9px;
   border-radius: 6px;
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -570,7 +630,7 @@ tbody tr:hover {
 
 .source-cell,
 .date-cell {
-  color: #777D79;
+  color: #777d79;
 }
 
 .date-cell {
@@ -587,31 +647,31 @@ tbody tr:hover {
   align-items: center;
   padding: 6px 10px;
   border-radius: 6px;
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .status-published {
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
 }
 
 .status-pending {
-  background: #FFF2CC;
+  background: #fff2cc;
   color: #806000;
 }
 
 .status-archived {
-  background: #FCE8E6;
-  color: #B8403B;
+  background: #fce8e6;
+  color: #b8403b;
 }
 
 .status-default {
-  background: #F0EEE7;
-  color: #666D68;
+  background: #f0eee7;
+  color: #666d68;
 }
 
 /* ========================================
@@ -626,16 +686,16 @@ tbody tr:hover {
   gap: 12px;
   min-height: 150px;
   padding: 24px;
-  border: 1px solid #E5E0D6;
+  border: 1px solid #e5e0d6;
   border-radius: 14px;
-  background: #FFFFFF;
-  color: #6B706D;
+  background: #ffffff;
+  color: #6b706d;
   font-size: 13px;
   text-align: center;
 }
 
 .feedback.error {
-  color: #B8403B;
+  color: #b8403b;
 }
 
 .feedback p {
@@ -644,10 +704,10 @@ tbody tr:hover {
 
 .retry-button {
   padding: 9px 13px;
-  border: 1px solid #D9534F;
+  border: 1px solid #d9534f;
   border-radius: 7px;
-  background: #FFFFFF;
-  color: #B8403B;
+  background: #ffffff;
+  color: #b8403b;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -655,7 +715,7 @@ tbody tr:hover {
 }
 
 .retry-button:hover {
-  background: #FCE8E6;
+  background: #fce8e6;
 }
 
 /* ========================================
@@ -664,12 +724,12 @@ tbody tr:hover {
 
 .empty-state {
   padding: 38px 16px;
-  color: #777D79;
+  color: #777d79;
   text-align: center;
 }
 
 .empty-icon {
-  color: #739C91;
+  color: #739c91;
   font-size: 26px;
 }
 
@@ -682,8 +742,8 @@ tbody tr:hover {
   padding: 8px 11px;
   border: none;
   border-radius: 6px;
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -691,7 +751,7 @@ tbody tr:hover {
 }
 
 .reset-button:hover {
-  background: #D7E7DF;
+  background: #d7e7df;
 }
 
 /* ========================================
@@ -700,11 +760,13 @@ tbody tr:hover {
 
 @media (max-width: 900px) {
   .filters {
-    flex-direction: column;
+    grid-template-columns: 160px minmax(0, 1fr);
   }
+}
 
-  .status-filter {
-    width: 100%;
+@media (max-width: 640px) {
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -740,7 +802,6 @@ tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   *,
   *::before,
   *::after {
@@ -748,5 +809,82 @@ tbody tr:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Cartes mobiles : masquées sur ordinateur */
+.mobile-quote-list {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .quotes-page {
+    min-width: 0;
+  }
+
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .table-wrapper {
+    display: none;
+  }
+
+  .mobile-quote-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-quote-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #e5e0d6;
+    border-radius: 12px;
+    background: #faf9f5;
+  }
+
+  .mobile-quote-text {
+    margin: 0 0 14px;
+    color: #212121;
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .mobile-quote-card h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+    color: #000000;
+  }
+
+  .mobile-quote-details {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mobile-quote-date {
+    margin: 12px 0 0;
+    color: #777d79;
+    font-size: 12px;
+  }
+
+  .mobile-empty-state {
+    padding: 20px 8px;
+    color: #777d79;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+.page-content,
+.quotes-page,
+.users-page,
+.stats-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 </style>

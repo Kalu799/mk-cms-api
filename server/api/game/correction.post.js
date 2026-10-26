@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { getAuthenticatedUser } from '../../utils/auth'
+import { unlockAvailableHats } from '../../utils/hats.js'
 
 // MySQL peut renvoyer les JSON déjà décodés, MariaDB peut renvoyer du texte.
 const parseJson = (value) => typeof value === 'string' ? JSON.parse(value) : value
@@ -174,6 +175,28 @@ export default defineEventHandler(async (event) => {
       }
     })
 
+    // Met à jour les statistiques des citations auxquelles le joueur a répondu.
+    for (const answer of corrections) {
+
+      // Retrouve la citation depuis la partie enregistrée côté serveur.
+      const question = questions.get(answer.question_id)
+      const quoteId = question.quote.ID_quote
+
+      await connection.query(
+        `UPDATE quotes
+     SET
+       times_asked = times_asked + 1,
+       correct_count = correct_count + ?,
+       incorrect_count = incorrect_count + ?
+     WHERE ID_quote = ?`,
+        [
+          answer.is_correct ? 1 : 0,
+          answer.is_correct ? 0 : 1,
+          quoteId,
+        ]
+      )
+    }
+
     const correctCount = corrections.filter((question) => question.is_correct).length
     const totalScore = corrections.reduce((total, question) => total + question.score, 0)
 
@@ -202,8 +225,14 @@ export default defineEventHandler(async (event) => {
       )
 
       if (result.affectedRows === 0) {
-        throw createError({ statusCode: 401, statusMessage: 'Compte introuvable' })
+        throw createError({
+          statusCode: 401,
+          statusMessage: 'Compte introuvable',
+        })
       }
+
+      // Utilise le score actualisé et la transaction déjà ouverte.
+      await unlockAvailableHats(connection, game.ID_user)
     }
 
     await connection.query(

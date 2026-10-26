@@ -11,14 +11,19 @@ export default defineEventHandler(async () => {
 
   try {
     const [users] = await connection.query(`
-      SELECT
-        ID_user,
-        user_pseudo,
-        user_score
-      FROM users
-      WHERE user_is_blocked = 0
-      ORDER BY user_score DESC, ID_user ASC
-    `)
+  SELECT
+    u.ID_user,
+    u.user_pseudo,
+    u.user_score,
+    u.user_avatar_color,
+    u.user_avatar_emotion,
+    u.user_avatar_hat_id,
+    h.hat_asset_key AS user_avatar_hat_asset_key
+  FROM users u
+  LEFT JOIN hats h ON h.ID_hat = u.user_avatar_hat_id
+  WHERE u.user_is_blocked = 0
+  ORDER BY u.user_score DESC, u.ID_user ASC
+`)
 
     return {
       leaderboard: users,

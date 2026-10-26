@@ -26,7 +26,8 @@ await requireCurrentAdmin(connection, authenticatedUser)
         user_is_blocked,
         user_avatar_color,
         user_avatar_emotion,
-        user_avatar_hat_id
+        user_avatar_hat_id,
+        user_created_at
       FROM users
       ORDER BY user_pseudo ASC
     `)

@@ -9,7 +9,7 @@ await navigateTo('/admin/login', {
   <main class="home">
     <h1>Movie King</h1>
     <p>Bienvenue dans ton CMS cinéma</p>
-    <p>Gère tes films, tes catégories et tes utilisateurs depuis ton espace d’administration.</p>
+    <p>Gère tes films, tes genres et tes utilisateurs depuis ton espace d’administration.</p>
   </main>
 </template>
 

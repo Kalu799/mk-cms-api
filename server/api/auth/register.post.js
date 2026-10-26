@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
     if (existingMail.length > 0) {
       throw createError({
         statusCode: 409,
-        statusMessage: 'Ce mail est déjà prit',
+        statusMessage: 'Ce mail est déjà pris',
       })
     }
 

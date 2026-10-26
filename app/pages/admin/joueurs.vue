@@ -1,196 +1,321 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-const updatingUserId = ref(null)
-const actionError = ref('')
-const deletingUserId = ref(null)
+import { ref, computed, onMounted, watch } from "vue";
+const updatingUserId = ref(null);
+const actionError = ref("");
+const deletingUserId = ref(null);
+const loaded = ref(false);
 
 definePageMeta({
-  layout: 'admin'
-})
+  layout: "admin",
+});
 
 // ========================================
 // DONNÉES ET ÉTATS
 // ========================================
 
-const users = ref([])
-const search = ref('')
-const selectedRole = ref('all')
-const isLoading = ref(true)
-const errorMessage = ref('')
-const selectedSort = ref('default')
+const users = ref([]);
+const search = ref("");
+const selectedRole = ref("all");
+const isLoading = ref(true);
+const errorMessage = ref("");
+const selectedSort = ref("default");
+const currentPage = ref(1);
+const pageSize = 25;
 
 // ========================================
 // RECHERCHE ET FILTRE DES UTILISATEURS
 // ========================================
 
-
-
 const filteredUsers = computed(() => {
-  const searchText = search.value.toLowerCase().trim()
+  const searchText = search.value.toLowerCase().trim();
 
   return users.value
     .filter((user) => {
-      const pseudo = (user.user_pseudo || '').toLowerCase()
-      const mail = (user.user_mail || '').toLowerCase()
+      const pseudo = (user.user_pseudo || "").toLowerCase();
+      const mail = (user.user_mail || "").toLowerCase();
 
       const matchesSearch =
-        pseudo.includes(searchText) ||
-        mail.includes(searchText)
+        pseudo.includes(searchText) || mail.includes(searchText);
 
       const matchesRole =
-        selectedRole.value === 'all' ||
-        user.user_role === selectedRole.value
+        selectedRole.value === "all" || user.user_role === selectedRole.value;
 
-      return matchesSearch && matchesRole
+      return matchesSearch && matchesRole;
     })
     .sort((a, b) => {
-      // Classement selon le score
-      if (selectedSort.value === 'score-desc') {
-        const scoreDifference =
-          Number(b.user_score ?? 0) - Number(a.user_score ?? 0)
 
-        if (scoreDifference !== 0) return scoreDifference
+      // Tri par date de création
+      if (
+        selectedSort.value === "date-desc" ||
+        selectedSort.value === "date-asc"
+      ) {
+        const dateA = a.user_created_at
+          ? new Date(String(a.user_created_at).replace(" ", "T")).getTime()
+          : 0;
+
+        const dateB = b.user_created_at
+          ? new Date(String(b.user_created_at).replace(" ", "T")).getTime()
+          : 0;
+
+        return selectedSort.value === "date-desc"
+          ? dateB - dateA
+          : dateA - dateB;
       }
 
-      if (selectedSort.value === 'score-asc') {
-        const scoreDifference =
-          Number(a.user_score ?? 0) - Number(b.user_score ?? 0)
 
-        if (scoreDifference !== 0) return scoreDifference
+
+
+      // Classement selon le score
+      if (selectedSort.value === "score-desc") {
+        const scoreDifference =
+          Number(b.user_score ?? 0) - Number(a.user_score ?? 0);
+
+        if (scoreDifference !== 0) return scoreDifference;
+      }
+
+      if (selectedSort.value === "score-asc") {
+        const scoreDifference =
+          Number(a.user_score ?? 0) - Number(b.user_score ?? 0);
+
+        if (scoreDifference !== 0) return scoreDifference;
       }
 
       // Tri par défaut : administrateurs en premier
-      if (a.user_role === 'admin' && b.user_role !== 'admin') return -1
-      if (a.user_role !== 'admin' && b.user_role === 'admin') return 1
+      if (a.user_role === "admin" && b.user_role !== "admin") return -1;
+      if (a.user_role !== "admin" && b.user_role === "admin") return 1;
 
       // Puis ordre alphabétique
-      return (a.user_pseudo || '').localeCompare(
-        b.user_pseudo || '',
-        'fr'
-      )
-    })
-})
+      return (a.user_pseudo || "").localeCompare(b.user_pseudo || "", "fr");
+    });
+});
 
+const paginatedUsers = computed(() => {
+  const start = (currentPage.value - 1) * pageSize;
+  return filteredUsers.value.slice(start, start + pageSize);
+});
+
+watch([search, selectedRole, selectedSort], () => {
+  currentPage.value = 1;
+});
+
+watch(filteredUsers, () => {
+  const lastPage = Math.max(1, Math.ceil(filteredUsers.value.length / pageSize));
+  if (currentPage.value > lastPage) currentPage.value = lastPage;
+});
 
 // ========================================
 // CHARGEMENT DEPUIS L'API
 // ========================================
 
 const loadUsers = async () => {
-  isLoading.value = true
-  errorMessage.value = ''
+  isLoading.value = true;
+  errorMessage.value = "";
 
   try {
-    const token = sessionStorage.getItem('movieKingAdminToken')
+    const token = sessionStorage.getItem("movieKingAdminToken");
 
     if (!token) {
-      await navigateTo('/admin/login', { replace: true })
-      return
+      await navigateTo("/admin/login", { replace: true });
+      return;
     }
 
-    const response = await $fetch('/api/admin/users', {
+    const response = await $fetch("/api/admin/users", {
       headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-    users.value = response.users || []
+    users.value = response.users || [];
+    loaded.value = true;
   } catch (error) {
     errorMessage.value =
-      error.data?.statusMessage ||
-      'Impossible de charger les utilisateurs.'
+      error.data?.statusMessage || "Impossible de charger les utilisateurs.";
   } finally {
-    isLoading.value = false
+    isLoading.value = false;
   }
+};
+
+// ========================================
+// AFFICHAGE DE LA DATE DE CRÉATION
+// ========================================
+
+
+const formatCreatedAt = (date) => {
+  if (!date) return "—";
+
+  // MySQL peut renvoyer une date au format YYYY-MM-DD HH:mm:ss.
+  const normalizedDate = String(date).replace(" ", "T");
+  const parsedDate = new Date(normalizedDate);
+
+  if (Number.isNaN(parsedDate.getTime())) return "—";
+
+  return new Intl.DateTimeFormat("fr-BE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parsedDate);
+};
+
+
+
+
+
+// ========================================
+// EXPORT CSV DES UTILISATEURS
+// ========================================
+
+const exportUsersToCSV = () => {
+  // Les mêmes utilisateurs que ceux affichés dans le tableau.
+  const data = filteredUsers.value
+
+  if (data.length === 0) {
+    actionError.value = "Aucun utilisateur à exporter."
+    return
+  }
+
+  // Colonnes autorisées dans le fichier CSV.
+  const columns = [
+    { label: "Identifiant", key: "ID_user" },
+    { label: "Pseudo", key: "user_pseudo" },
+    { label: "E-mail", key: "user_mail" },
+    { label: "Rôle", key: "user_role" },
+    { label: "Score", key: "user_score" },
+    { label: "Statut", key: "user_is_blocked" },
+    { label: "Date de création", key: "user_created_at" },
+  ]
+
+  // Protège les cellules et échappe les guillemets.
+  const escapeCSV = (value) => {
+    let text = String(value ?? "")
+
+    // Évite qu'un tableur interprète une cellule comme une formule.
+    if (/^[\s]*[=+\-@]/.test(text)) {
+      text = `'${text}`
+    }
+
+    return `"${text.replace(/"/g, '""')}"`
+  }
+
+  const header = columns
+    .map((column) => escapeCSV(column.label))
+    .join(";")
+
+  const rows = data.map((user) =>
+    columns
+      .map((column) => {
+        let value = user[column.key]
+
+        if (column.key === "user_is_blocked") {
+          value = Number(value) === 1 ? "Bloqué" : "Actif"
+        }
+
+        return escapeCSV(value)
+      })
+      .join(";"),
+  )
+
+  // BOM UTF-8 pour faciliter l'ouverture des accents dans Excel.
+  const csvContent = "\uFEFF" + [header, ...rows].join("\r\n")
+  const blob = new Blob([csvContent], {
+    type: "text/csv;charset=utf-8;",
+  })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+
+  link.href = url
+  link.download = `utilisateurs-movie-king-${new Date()
+    .toISOString()
+    .slice(0, 10)}.csv`
+
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 // ========================================
 // BLOQUAGE DE USERS
 // ========================================
 
-
 const toggleUserBlock = async (user) => {
-  actionError.value = ''
+  actionError.value = "";
 
-  const isBlocked = Number(user.user_is_blocked) === 1
-  const newBlockedState = !isBlocked
+  const isBlocked = Number(user.user_is_blocked) === 1;
+  const newBlockedState = !isBlocked;
 
-  updatingUserId.value = user.ID_user
+  updatingUserId.value = user.ID_user;
 
   try {
-    const token = sessionStorage.getItem('movieKingAdminToken')
+    const token = sessionStorage.getItem("movieKingAdminToken");
 
     await $fetch(`/api/admin/user/${user.ID_user}`, {
-      method: 'PATCH',
+      method: "PATCH",
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
       },
       body: {
-        user_is_blocked: newBlockedState
-      }
-    })
+        user_is_blocked: newBlockedState,
+      },
+    });
 
     // Actualise le statut dans le tableau après confirmation du serveur.
-    user.user_is_blocked = newBlockedState ? 1 : 0
+    user.user_is_blocked = newBlockedState ? 1 : 0;
   } catch (error) {
     actionError.value =
       error.data?.statusMessage ||
-      'Impossible de modifier le statut de cet utilisateur.'
+      "Impossible de modifier le statut de cet utilisateur.";
   } finally {
-    updatingUserId.value = null
+    updatingUserId.value = null;
   }
-}
+};
 
 // ========================================
 // SUPPRESSION DE USERS
 // ========================================
 
-
 const deleteUser = async (user) => {
-  actionError.value = ''
+  actionError.value = "";
 
   const confirmed = window.confirm(
-    `Veux-tu vraiment supprimer le compte de ${user.user_pseudo} ? Cette action est irréversible.`
-  )
+    `Veux-tu vraiment supprimer le compte de ${user.user_pseudo} ? Cette action est irréversible.`,
+  );
 
-  if (!confirmed) return
+  if (!confirmed) return;
 
-  deletingUserId.value = user.ID_user
+  deletingUserId.value = user.ID_user;
 
   try {
-    const token = sessionStorage.getItem('movieKingAdminToken')
+    const token = sessionStorage.getItem("movieKingAdminToken");
 
     if (!token) {
-      throw new Error('Session administrateur introuvable.')
+      throw new Error("Session administrateur introuvable.");
     }
 
     await $fetch(`/api/admin/user/${user.ID_user}`, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    })
+    });
 
     // Retire la ligne uniquement après confirmation du serveur.
-    users.value = users.value.filter(
-      (item) => item.ID_user !== user.ID_user
-    )
+    users.value = users.value.filter((item) => item.ID_user !== user.ID_user);
   } catch (error) {
     actionError.value =
       error.data?.statusMessage ||
       error.message ||
-      'Impossible de supprimer cet utilisateur.'
+      "Impossible de supprimer cet utilisateur.";
   } finally {
-    deletingUserId.value = null
+    deletingUserId.value = null;
   }
-}
-
+};
 
 // ========================================
 // INITIALISATION
 // ========================================
 
-onMounted(loadUsers)
+onMounted(loadUsers);
 </script>
 
 <template>
@@ -205,17 +330,26 @@ onMounted(loadUsers)
         </p>
       </div>
 
-      <button class="refresh-button" type="button" :disabled="isLoading" @click="loadUsers">
-        <span class="refresh-icon">↻</span>
-        {{ isLoading ? 'Chargement...' : 'Actualiser' }}
-      </button>
+
+      <div class="header-actions">
+        <button class="export-button" type="button" :disabled="isLoading || filteredUsers.length === 0"
+          @click="exportUsersToCSV">
+          ↓ Exporter CSV
+        </button>
+
+        <button class="refresh-button" type="button" :disabled="isLoading" @click="loadUsers">
+          <span class="refresh-icon">↻</span>
+          {{ isLoading ? "Chargement..." : "Actualiser" }}
+        </button>
+      </div>
+
     </header>
 
     <!-- Statistique -->
     <div class="stats-card">
       <span class="stats-icon">♙</span>
 
-      <div>
+      <div v-show="loaded">
         <p>Comptes enregistrés</p>
         <strong>{{ users.length }}</strong>
       </div>
@@ -245,12 +379,12 @@ onMounted(loadUsers)
           <option value="admin">Administrateurs</option>
         </select>
 
-
-
         <select v-model="selectedSort" aria-label="Trier les utilisateurs">
           <option value="default">Tri par défaut</option>
           <option value="score-desc">Meilleurs scores</option>
           <option value="score-asc">Scores les plus faibles</option>
+          <option value="date-desc">Plus récents</option>
+          <option value="date-asc">Plus anciens</option>
         </select>
       </div>
 
@@ -282,25 +416,25 @@ onMounted(loadUsers)
                 <th scope="col">Rôle</th>
                 <th scope="col">Score</th>
                 <th scope="col">Statut</th>
+                <th scope="col">Date de création</th>
                 <th scope="col">Action</th>
               </tr>
             </thead>
 
-
             <tbody>
-              <tr v-for="user in filteredUsers" :key="user.ID_user">
+              <tr v-for="user in paginatedUsers" :key="user.ID_user">
                 <td class="pseudo">
-                  {{ user.user_pseudo || 'Sans pseudo' }}
+                  {{ user.user_pseudo || "Sans pseudo" }}
                 </td>
 
                 <td class="user-mail">
-                  {{ user.user_mail || '—' }}
+                  {{ user.user_mail || "—" }}
                 </td>
 
                 <td>
                   <span class="role-badge" :class="user.user_role">
                     <span class="role-dot"></span>
-                    {{ user.user_role === 'admin' ? 'Admin' : 'Joueur' }}
+                    {{ user.user_role === "admin" ? "Admin" : "Joueur" }}
                   </span>
                 </td>
 
@@ -310,73 +444,161 @@ onMounted(loadUsers)
 
                 <!-- Statut du compte -->
                 <td>
-                  <span class="status-badge" :class="Number(user.user_is_blocked) === 1 ? 'blocked' : 'active'">
-                    {{ Number(user.user_is_blocked) === 1 ? 'Bloqué' : 'Actif' }}
+                  <span class="status-badge" :class="Number(user.user_is_blocked) === 1 ? 'blocked' : 'active'
+                    ">
+                    {{
+                      Number(user.user_is_blocked) === 1 ? "Bloqué" : "Actif"
+                    }}
                   </span>
+                </td>
+
+                <!-- Date de création du compte -->
+                <td class="created-at">
+                  {{ formatCreatedAt(user.user_created_at) }}
                 </td>
 
                 <!-- Action de blocage -->
                 <td>
-                  <button type="button" class="block-button"
-                    :class="Number(user.user_is_blocked) === 1 ? 'unblock' : 'block'"
-                    :disabled="updatingUserId === user.ID_user" @click="toggleUserBlock(user)">
+                  <button type="button" class="block-button" :class="Number(user.user_is_blocked) === 1 ? 'unblock' : 'block'
+                    " :disabled="updatingUserId === user.ID_user" @click="toggleUserBlock(user)">
                     {{
                       updatingUserId === user.ID_user
-                        ? 'Patientez...'
+                        ? "Patientez..."
                         : Number(user.user_is_blocked) === 1
-                          ? 'Débloquer'
-                          : 'Bloquer'
+                          ? "Débloquer"
+                          : "Bloquer"
                     }}
                   </button>
 
                   <button type="button" class="delete-button" :disabled="deletingUserId === user.ID_user"
-                    @click="deleteUser(user)">
-                    {{
-                      deletingUserId === user.ID_user
-                        ? 'Suppression...'
-                        : 'Supprimer'
-                    }}
+                    :aria-label="`Supprimer le compte de ${user.user_pseudo}`"
+                    :title="`Supprimer le compte de ${user.user_pseudo}`" @click="deleteUser(user)">
+                    <span v-if="deletingUserId === user.ID_user">Suppression...</span>
+                    <span v-else aria-hidden="true">🗑️</span>
                   </button>
                 </td>
               </tr>
 
               <!-- Aucun résultat -->
               <tr v-if="filteredUsers.length === 0">
-                <td colspan="6" class="empty-state">
+                <td colspan="7" class="empty-state">
                   <span class="empty-icon">⌕</span>
 
                   <p>
                     {{
-                      search || selectedRole !== 'all'
-                        ? 'Aucun utilisateur ne correspond aux filtres.'
-                        : 'Aucun utilisateur enregistré.'
+                      search || selectedRole !== "all"
+                        ? "Aucun utilisateur ne correspond aux filtres."
+                        : "Aucun utilisateur enregistré."
                     }}
                   </p>
 
-
-                  <button v-if="search || selectedRole !== 'all' || selectedSort !== 'default'" type="button"
-                    class="clear-filters" @click="search = ''; selectedRole = 'all'; selectedSort = 'default'">
+                  <button v-if="
+                    search ||
+                    selectedRole !== 'all' ||
+                    selectedSort !== 'default'
+                  " type="button" class="clear-filters" @click="
+                    search = '';
+                  selectedRole = 'all';
+                  selectedSort = 'default';
+                  ">
                     Réinitialiser les filtres
                   </button>
-
                 </td>
               </tr>
             </tbody>
-
           </table>
         </div>
+
+        <!-- Cartes utilisateurs sur mobile -->
+        <div class="mobile-user-list">
+          <article v-for="user in filteredUsers" :key="user.ID_user" class="mobile-user-card">
+            <div class="mobile-user-heading">
+              <div class="mobile-user-identity">
+                <h3>{{ user.user_pseudo || 'Sans pseudo' }}</h3>
+                <p>{{ user.user_mail || '—' }}</p>
+              </div>
+
+              <span class="status-badge" :class="Number(user.user_is_blocked) === 1 ? 'blocked' : 'active'">
+                {{ Number(user.user_is_blocked) === 1 ? 'Bloqué' : 'Actif' }}
+              </span>
+            </div>
+
+            <dl class="mobile-user-details">
+              <div>
+                <dt>Rôle</dt>
+                <dd>{{ user.user_role === 'admin' ? 'Administrateur' : 'Joueur' }}</dd>
+              </div>
+
+              <div>
+                <dt>Score</dt>
+                <dd>{{ user.user_score ?? 0 }}</dd>
+              </div>
+
+              <div>
+                <dt>Inscription</dt>
+                <dd>{{ formatCreatedAt(user.user_created_at) }}</dd>
+              </div>
+            </dl>
+
+            <div class="mobile-user-actions">
+              <button type="button" class="block-button"
+                :class="Number(user.user_is_blocked) === 1 ? 'unblock' : 'block'"
+                :disabled="updatingUserId === user.ID_user" @click="toggleUserBlock(user)">
+                {{
+                  updatingUserId === user.ID_user
+                    ? 'Patientez...'
+                    : Number(user.user_is_blocked) === 1
+                      ? 'Débloquer'
+                      : 'Bloquer'
+                }}
+              </button>
+
+              <button type="button" class="delete-button" :disabled="deletingUserId === user.ID_user"
+                @click="deleteUser(user)"
+                :aria-label="deletingUserId === user.ID_user ? 'Suppression en cours' : `Supprimer ${user.user_pseudo}`"
+                title="Supprimer l'utilisateur">
+                <span v-if="deletingUserId === user.ID_user">Suppression...</span>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14H6L5 6"></path>
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                  <path d="M9 6V4h6v2"></path>
+                </svg>
+              </button>
+            </div>
+          </article>
+
+          <p v-if="filteredUsers.length === 0" class="mobile-empty-state">
+            {{
+              search || selectedRole !== 'all'
+                ? 'Aucun utilisateur ne correspond aux filtres.'
+                : 'Aucun utilisateur enregistré.'
+            }}
+          </p>
+        </div>
+
+        <AdminPagination
+          v-model:current-page="currentPage"
+          :total-items="filteredUsers.length"
+          :page-size="pageSize"
+        />
 
         <!-- Pied du tableau -->
         <footer class="table-footer">
           <p class="results-count">
-            <strong>{{ filteredUsers.length }}</strong>
+            <strong>{{ paginatedUsers.length }}</strong>
             utilisateur(s) affiché(s)
             <span class="results-separator">/</span>
-            {{ users.length }} au total
+            {{ filteredUsers.length }} résultat(s)
           </p>
 
-          <button v-if="search || selectedRole !== 'all'" type="button" class="clear-filters"
-            @click="search = ''; selectedRole = 'all'">
+          <button v-if="search || selectedRole !== 'all'" type="button" class="clear-filters" @click="
+            search = '';
+          selectedRole = 'all';
+          ">
             Réinitialiser les filtres
           </button>
         </footer>
@@ -404,12 +626,11 @@ onMounted(loadUsers)
 
 .eyebrow {
   margin: 0 0 10px;
-  color: #52796F;
+  color: #52796f;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.5px;
 }
-
 
 .subtitle {
   margin: 10px 0 0;
@@ -428,10 +649,10 @@ onMounted(loadUsers)
   justify-content: center;
   gap: 8px;
   padding: 11px 16px;
-  border: 1px solid #739C91;
+  border: 1px solid #739c91;
   border-radius: 9px;
-  background: #739C91;
-  color: #FFFFFF;
+  background: #739c91;
+  color: #ffffff;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -442,7 +663,7 @@ onMounted(loadUsers)
 }
 
 .refresh-button:hover:not(:disabled) {
-  background: #52796F;
+  background: #52796f;
   transform: translateY(-1px);
 }
 
@@ -456,15 +677,65 @@ onMounted(loadUsers)
   line-height: 1;
 }
 
+
+/* ========================================
+   BOUTON CSV
+======================================== */
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.export-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border: 1px solid #739c91;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #52796f;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.export-button:hover:not(:disabled) {
+  background: #e7f0ec;
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .header-actions button {
+    width: 100%;
+  }
+}
+
+
 /* ========================================
    STATISTIQUE
 ======================================== */
 
 .stats-card,
 .users-card {
-  border: 1px solid #E5E0D6;
+  border: 1px solid #e5e0d6;
   border-radius: 14px;
-  background: #FFFFFF;
+  background: #ffffff;
   box-shadow: 0 4px 12px rgb(33 33 33 / 4%);
 }
 
@@ -485,14 +756,14 @@ onMounted(loadUsers)
   height: 48px;
   flex-shrink: 0;
   border-radius: 12px;
-  background: #E7F0EC;
-  color: #52796F;
+  background: #e7f0ec;
+  color: #52796f;
   font-size: 25px;
 }
 
 .stats-card p {
   margin: 0 0 5px;
-  color: #6B706D;
+  color: #6b706d;
   font-size: 13px;
 }
 
@@ -523,7 +794,7 @@ onMounted(loadUsers)
 
 .table-heading p {
   margin: 7px 0 0;
-  color: #777D79;
+  color: #777d79;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -548,7 +819,7 @@ onMounted(loadUsers)
   position: absolute;
   top: 50%;
   left: 14px;
-  color: #6B706D;
+  color: #6b706d;
   font-size: 23px;
   transform: translateY(-54%);
   pointer-events: none;
@@ -559,10 +830,10 @@ onMounted(loadUsers)
   box-sizing: border-box;
   min-width: 0;
   padding: 13px 14px;
-  border: 1px solid #DEDCD3;
+  border: 1px solid #dedcd3;
   border-radius: 9px;
   outline: none;
-  background: #FAF9F5;
+  background: #faf9f5;
   color: #212121;
   font: inherit;
   font-size: 13px;
@@ -587,7 +858,7 @@ onMounted(loadUsers)
 
 .filters input:focus,
 .filters select:focus {
-  border-color: #739C91;
+  border-color: #739c91;
   box-shadow: 0 0 0 3px rgb(115 156 145 / 15%);
 }
 
@@ -597,7 +868,7 @@ onMounted(loadUsers)
 
 .table-wrapper {
   overflow-x: auto;
-  border: 1px solid #EAE7DF;
+  border: 1px solid #eae7df;
   border-radius: 10px;
 }
 
@@ -608,23 +879,23 @@ table {
 }
 
 thead {
-  background: #F7F4EA;
+  background: #f7f4ea;
 }
 
 th {
   padding: 15px 16px;
-  color: #666D68;
+  color: #666d68;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  border-bottom: 1px solid #E5E0D6;
+  border-bottom: 1px solid #e5e0d6;
   white-space: nowrap;
 }
 
 td {
   padding: 17px 16px;
-  border-bottom: 1px solid #F0EEE7;
+  border-bottom: 1px solid #f0eee7;
   color: #343835;
   font-size: 13px;
 }
@@ -638,7 +909,7 @@ tbody tr:not(:last-child) {
 }
 
 tbody tr:not(:last-child):hover {
-  background: #F9FAF6;
+  background: #f9faf6;
 }
 
 .pseudo {
@@ -678,21 +949,21 @@ tbody tr:not(:last-child):hover {
 }
 
 .role-badge.admin {
-  background: #FCE8E6;
-  color: #B8403B;
+  background: #fce8e6;
+  color: #b8403b;
 }
 
 .role-badge.admin .role-dot {
-  background: #D9534F;
+  background: #d9534f;
 }
 
 .role-badge.player {
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
 }
 
 .role-badge.player .role-dot {
-  background: #739C91;
+  background: #739c91;
 }
 
 /* ========================================
@@ -707,7 +978,7 @@ tbody tr:not(:last-child):hover {
   gap: 12px;
   min-height: 150px;
   padding: 24px;
-  color: #6B706D;
+  color: #6b706d;
   font-size: 13px;
   text-align: center;
 }
@@ -715,14 +986,14 @@ tbody tr:not(:last-child):hover {
 .loading-dot {
   width: 22px;
   height: 22px;
-  border: 3px solid #E7F0EC;
-  border-top-color: #52796F;
+  border: 3px solid #e7f0ec;
+  border-top-color: #52796f;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 .error {
-  color: #B8403B;
+  color: #b8403b;
 }
 
 .feedback-icon {
@@ -731,8 +1002,8 @@ tbody tr:not(:last-child):hover {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: #FCE8E6;
-  color: #B8403B;
+  background: #fce8e6;
+  color: #b8403b;
   font-weight: 700;
 }
 
@@ -742,10 +1013,10 @@ tbody tr:not(:last-child):hover {
 
 .retry-button {
   padding: 9px 13px;
-  border: 1px solid #D9534F;
+  border: 1px solid #d9534f;
   border-radius: 7px;
-  background: #FFFFFF;
-  color: #B8403B;
+  background: #ffffff;
+  color: #b8403b;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -753,7 +1024,7 @@ tbody tr:not(:last-child):hover {
 }
 
 .retry-button:hover {
-  background: #FCE8E6;
+  background: #fce8e6;
 }
 
 @keyframes spin {
@@ -768,12 +1039,12 @@ tbody tr:not(:last-child):hover {
 
 .empty-state {
   padding: 38px 16px;
-  color: #777D79;
+  color: #777d79;
   text-align: center;
 }
 
 .empty-icon {
-  color: #739C91;
+  color: #739c91;
   font-size: 26px;
 }
 
@@ -797,7 +1068,7 @@ tbody tr:not(:last-child):hover {
 
 .results-count {
   margin: 0;
-  color: #777D79;
+  color: #777d79;
   font-size: 12px;
 }
 
@@ -807,15 +1078,15 @@ tbody tr:not(:last-child):hover {
 
 .results-separator {
   padding: 0 5px;
-  color: #B4B6B1;
+  color: #b4b6b1;
 }
 
 .clear-filters {
   padding: 8px 11px;
   border: none;
   border-radius: 6px;
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -823,7 +1094,7 @@ tbody tr:not(:last-child):hover {
 }
 
 .clear-filters:hover {
-  background: #D7E7DF;
+  background: #d7e7df;
 }
 
 /* ========================================
@@ -881,7 +1152,6 @@ tbody tr:not(:last-child):hover {
    bouton bloquage
 ======================================== */
 
-
 .status-badge {
   display: inline-flex;
   padding: 6px 10px;
@@ -892,13 +1162,13 @@ tbody tr:not(:last-child):hover {
 }
 
 .status-badge.active {
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
 }
 
 .status-badge.blocked {
-  background: #FCE8E6;
-  color: #B8403B;
+  background: #fce8e6;
+  color: #b8403b;
 }
 
 .block-button {
@@ -913,13 +1183,13 @@ tbody tr:not(:last-child):hover {
 }
 
 .block-button.block {
-  background: #FCE8E6;
-  color: #B8403B;
+  background: #fce8e6;
+  color: #b8403b;
 }
 
 .block-button.unblock {
-  background: #E7F0EC;
-  color: #42675D;
+  background: #e7f0ec;
+  color: #42675d;
 }
 
 .block-button:disabled {
@@ -928,22 +1198,20 @@ tbody tr:not(:last-child):hover {
 }
 
 .block-button:focus-visible {
-  outline: 2px solid #739C91;
+  outline: 2px solid #739c91;
   outline-offset: 3px;
 }
-
 
 /* ========================================
    bouton SUPRESSION
 ======================================== */
 
-
 .delete-button {
   padding: 10px 13px;
-  border: 1px solid #D9534F;
+  border: 1px solid #d9534f;
   border-radius: 7px;
-  background: #FFFFFF;
-  color: #B8403B;
+  background: #ffffff;
+  color: #b8403b;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -953,11 +1221,131 @@ tbody tr:not(:last-child):hover {
 }
 
 .delete-button:hover:not(:disabled) {
-  background: #FCE8E6;
+  background: #fce8e6;
 }
 
 .delete-button:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+
+.created-at {
+  color: #6b706d;
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* Cartes utilisateurs : masquées sur ordinateur */
+.mobile-user-list {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .users-page {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table-wrapper {
+    display: none;
+  }
+
+  .mobile-user-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-user-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #E5E0D6;
+    border-radius: 12px;
+    background: #FAF9F5;
+  }
+
+  .mobile-user-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .mobile-user-identity {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-user-identity h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    overflow-wrap: anywhere;
+    color: #000000;
+  }
+
+  .mobile-user-identity p {
+    margin: 0;
+    color: #777D79;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-user-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0;
+  }
+
+  .mobile-user-details dt {
+    margin-bottom: 5px;
+    color: #777D79;
+    font-size: 11px;
+  }
+
+  .mobile-user-details dd {
+    margin: 0;
+    color: #212121;
+    font-size: 13px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-user-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid #E5E0D6;
+  }
+
+  .mobile-user-actions button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 10px 6px;
+    white-space: normal;
+  }
+
+  .mobile-empty-state {
+    padding: 20px 8px;
+    color: #777D79;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+
+.page-content,
+.quotes-page,
+.users-page,
+.stats-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 </style>

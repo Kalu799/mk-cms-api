@@ -13,7 +13,7 @@ const shuffle = (items) => {
 
   for (let i = result.length - 1; i > 0; i--) {
     const j = randomInt(i + 1)
-    ;[result[i], result[j]] = [result[j], result[i]]
+      ;[result[i], result[j]] = [result[j], result[i]]
   }
 
   return result
@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
   if (!authenticatedUser && !allCategories) {
     throw createError({
       statusCode: 401,
-      statusMessage: 'Connectez-vous pour choisir les catégories',
+      statusMessage: 'Connectez-vous pour choisir les genres',
     })
   }
 
@@ -100,43 +100,95 @@ export default defineEventHandler(async (event) => {
       )
     } else {
       const placeholders = genreIds.map(() => '?').join(', ')
-      ;[genres] = await connection.query(
-        `SELECT ID_genre, genre_name FROM genres
+        ;[genres] = await connection.query(
+          `SELECT ID_genre, genre_name FROM genres
          WHERE ID_genre IN (${placeholders}) ORDER BY genre_name ASC`,
-        genreIds
-      )
+          genreIds
+        )
 
       if (genres.length !== genreIds.length) {
-        throw createError({ statusCode: 400, statusMessage: 'Catégorie introuvable' })
+        throw createError({ statusCode: 400, statusMessage: 'Genre introuvable' })
       }
     }
 
     // EXISTS évite de dupliquer une citation d'un film ayant plusieurs genres.
+    // Filtre les films selon les genres sélectionnés.
+    // EXISTS évite les doublons lorsqu'un film possède plusieurs genres.
     const categoryFilter = allCategories ? '' : `
-      AND EXISTS (
-        SELECT 1 FROM movie_genres mg
-        WHERE mg.ID_movie = q.ID_movie
-          AND mg.ID_genre IN (${genreIds.map(() => '?').join(', ')})
-      )`
+  AND EXISTS (
+    SELECT 1 FROM movie_genres mg
+    WHERE mg.ID_movie = m.ID_movie
+      AND mg.ID_genre IN (${genreIds.map(() => '?').join(', ')})
+  )`
 
-    const [quotes] = await connection.query(
-      `SELECT q.ID_quote, q.ID_movie, q.quote_text, q.quote_language,
-              m.movie_title
-       FROM quotes q
-       JOIN movies m ON m.ID_movie = q.ID_movie
-       WHERE q.quote_status = 'approved' ${categoryFilter}
-       ORDER BY RAND()
-       LIMIT ?`,
+    // Chaque film a la même chance d'être sélectionné,
+    // quel que soit son nombre de citations.
+    const [selectedMovies] = await connection.query(
+      `SELECT m.ID_movie, m.movie_title
+   FROM movies m
+   WHERE EXISTS (
+     SELECT 1 FROM quotes q
+     WHERE q.ID_movie = m.ID_movie
+       AND q.quote_status = 'approved'
+   )
+   ${categoryFilter}
+   ORDER BY RAND()
+   LIMIT ?`,
       [...genreIds, QUESTION_COUNT]
     )
 
-    if (quotes.length < QUESTION_COUNT) {
+    if (selectedMovies.length < QUESTION_COUNT) {
       throw createError({
         statusCode: 422,
-        statusMessage: 'Pas assez de citations approuvées pour ces catégories',
+        statusMessage:
+          'Il faut au moins dix films différents ayant une citation approuvée pour ces genres',
       })
     }
 
+    const selectedMovieIds = selectedMovies.map((movie) => movie.ID_movie)
+    const moviePlaceholders = selectedMovieIds.map(() => '?').join(', ')
+
+    // Récupère uniquement les citations approuvées des films sélectionnés.
+    const [availableQuotes] = await connection.query(
+      `SELECT ID_quote, ID_movie, quote_text, quote_language
+   FROM quotes
+   WHERE quote_status = 'approved'
+     AND ID_movie IN (${moviePlaceholders})`,
+      selectedMovieIds
+    )
+
+    // Regroupe les citations par film.
+    const quotesByMovie = new Map()
+
+    for (const quote of availableQuotes) {
+      if (!quotesByMovie.has(quote.ID_movie)) {
+        quotesByMovie.set(quote.ID_movie, [])
+      }
+
+      quotesByMovie.get(quote.ID_movie).push(quote)
+    }
+
+    // Choisit une citation aléatoire pour chacun des dix films.
+    const quotes = selectedMovies.map((movie) => {
+      const movieQuotes = quotesByMovie.get(movie.ID_movie)
+
+      // Gère le cas où une citation aurait été supprimée ou
+      // désapprouvée entre les deux requêtes.
+      if (!movieQuotes?.length) {
+        throw createError({
+          statusCode: 422,
+          statusMessage:
+            'Une citation est devenue indisponible. Relancez la partie.',
+        })
+      }
+
+      const quote = movieQuotes[randomInt(movieQuotes.length)]
+
+      return {
+        ...quote,
+        movie_title: movie.movie_title,
+      }
+    })
     // Les distracteurs viennent du même ensemble de catégories.
     const movieFilter = allCategories ? '' : `
       WHERE EXISTS (
@@ -187,8 +239,8 @@ export default defineEventHandler(async (event) => {
         : {
           ID_genre: null,
           genre_name: allCategories
-            ? 'Toutes les catégories'
-            : 'Catégories sélectionnées',
+            ? 'Tous les genres'
+            : 'Genres sélectionnés',
         },
       // Ajout pour identifier toutes les catégories en cas de sélection multiple.
       genres,

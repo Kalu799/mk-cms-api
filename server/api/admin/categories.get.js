@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
 
     throw createError({
       statusCode: 500,
-      statusMessage: 'Impossible de charger les catégories',
+      statusMessage: 'Impossible de charger les genres',
     })
   } finally {
     if (connection) {
